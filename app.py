@@ -3,14 +3,14 @@ import sqlite3
 import tensorflow as tf
 import numpy as np
 from PIL import Image
-from huggingface_hub import hf_hub_download # Importação necessária para o Hugging Face
+from huggingface_hub import hf_hub_download 
 import os
-# O 'requests' e 'io' não são mais necessários para este método
+# Importa a classe InputLayer para a correção
+from tensorflow.keras.layers import InputLayer 
 
 # --- Configurações do Modelo e Banco de Dados ---
-# Seu repositório no Hugging Face (URL fornecida: https://huggingface.co/viniciuslima47/pneumonia-vgg-model)
 REPO_ID = "viniciuslima47/pneumonia-vgg-model" 
-MODEL_FILENAME = "final_vgg16_model.h5" # Presume que este é o nome do arquivo no seu repositório HF
+MODEL_FILENAME = "final_vgg16_model.h5" 
 
 # --- Configuração do Banco de Dados ---
 conn = sqlite3.connect("usos.db")
@@ -27,33 +27,36 @@ conn.commit()
 # 1. Função para Baixar e Carregar o Modelo
 @st.cache_resource
 def load_and_cache_model():
-    """Baixa o modelo do Hugging Face Hub e o carrega usando Keras."""
+    """Baixa o modelo do Hugging Face Hub e o carrega usando Keras com custom_objects."""
     
     st.info(f"Baixando e carregando o modelo do Hugging Face Hub ({MODEL_FILENAME})...")
     
     try:
-        # Baixa o arquivo e armazena-o em cache localmente. 
-        # Esta função cuida da verificação de existência e do download.
         downloaded_path = hf_hub_download(
             repo_id=REPO_ID,
             filename=MODEL_FILENAME
         )
         st.success("Download do modelo concluído. Carregando Keras...")
 
-        # Carregar o modelo Keras a partir do caminho baixado
-        model = tf.keras.models.load_model(downloaded_path)
+        # TENTA CORRIGIR O ERRO: Passa o InputLayer como objeto customizado,
+        # forçando o Keras a aceitar o InputLayer que foi salvo de forma antiga.
+        model = tf.keras.models.load_model(
+            downloaded_path,
+            custom_objects={'InputLayer': InputLayer}
+        )
         return model
         
     except Exception as e:
-        # Erro genérico de download/carregamento (inclui incompatibilidade Keras)
-        st.error(f"Erro ao baixar ou carregar o modelo. Verifique o REPO_ID e o nome do arquivo.")
+        # Se o erro 'batch_shape' persistir, é porque a incompatibilidade é mais profunda.
+        st.error(f"Erro ao carregar o modelo Keras. O formato .h5 está incompatível com as versões recentes do TensorFlow.")
+        st.caption("Último erro tentando carregar o modelo .h5:")
         st.code(f"Detalhes do Erro: {e}")
         return None
 
 # Carrega o modelo.
 model = load_and_cache_model()
 
-# --- Interface do Streamlit ---
+# --- Interface do Streamlit (Sem Alterações) ---
 st.title("Classificador de Pneumonia em Raio-X")
 
 if model is not None:
@@ -68,10 +71,9 @@ if model is not None:
             # Pré-processamento
             img_resized = img.resize((224,224))
             arr = np.array(img_resized)/255.0
-            arr = np.expand_dims(arr, axis=0) # Adiciona a dimensão do batch
+            arr = np.expand_dims(arr, axis=0)
 
             # Predição
-            # Nota: O uso de model.predict pode gerar avisos, mas deve funcionar
             prob = float(model.predict(arr)[0][0])
             pred = "Pneumonia" if prob > 0.5 else "Normal"
             
@@ -92,4 +94,4 @@ if model is not None:
                          column_names=["ID", "Resultado", "Prob.", "Nome do Arquivo"])
 
 else:
-    st.error("O modelo não pôde ser carregado.")
+    st.error("O modelo não pôde ser carregado. Verifique os logs para detalhes do erro.")
