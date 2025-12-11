@@ -2,6 +2,6 @@ streamlit
 requests
 huggingface-hub
 Pillow
-protobuf==3.20.3 
+protobuf==3.20.3
 numpy==1.23.5
-tensorflow==2.9.0
+tensorflow==3.10.0
